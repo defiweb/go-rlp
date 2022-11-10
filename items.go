@@ -45,6 +45,53 @@ func (r RLP) DecodeInto(dest Item) error {
 	return err
 }
 
+// Length returns the length of the string or list. If item is invalid
+// it returns 0.
+func (r RLP) Length() uint64 {
+	_, dataLen, _, _ := decodePrefix(r)
+	return dataLen
+}
+
+// GetStringItem tries to decode itself as a string. If the decoding was
+// successful it returns the decoded StringItem.
+func (r RLP) GetStringItem() (*StringItem, error) {
+	s := StringItem{}
+	if err := r.DecodeInto(&s); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetListItem tries to decode itself as a list. If the decoding was
+// successful it returns the decoded ListItem.
+func (r RLP) GetListItem() (*ListItem, error) {
+	i := ListItem{}
+	if err := r.DecodeInto(&i); err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
+// GetUintItem tries to decode itself as an integer. If the decoding was
+// successful it returns the decoded UintItem.
+func (r RLP) GetUintItem() (*UintItem, error) {
+	i := UintItem{}
+	if err := r.DecodeInto(&i); err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
+// GetBigIntItem tries to decode itself as a big integer. If the decoding was
+// successful it returns the decoded BigIntItem.
+func (r RLP) GetBigIntItem() (*BigIntItem, error) {
+	i := BigIntItem{}
+	if err := r.DecodeInto(&i); err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
 // Get decodes RLP encoded data into the given item and if decoding was
 // successful it invokes the fn callback.
 func (r RLP) Get(i Item, fn func(Item)) error {
@@ -58,8 +105,8 @@ func (r RLP) Get(i Item, fn func(Item)) error {
 // GetString tries to decode itself as a string. If the decoding was
 // successful it returns the decoded string.
 func (r RLP) GetString() (string, error) {
-	s := StringItem{}
-	if err := r.DecodeInto(&s); err != nil {
+	s, err := r.GetStringItem()
+	if err != nil {
 		return "", err
 	}
 	return s.String(), nil
@@ -68,22 +115,22 @@ func (r RLP) GetString() (string, error) {
 // GetBytes tries to decode itself as a byte slice. If the decoding was
 // successful it returns the decoded byte slice.
 func (r RLP) GetBytes() ([]byte, error) {
-	s := StringItem{}
-	if err := r.DecodeInto(&s); err != nil {
+	i, err := r.GetStringItem()
+	if err != nil {
 		return nil, err
 	}
-	return s.Bytes(), nil
+	return i.Bytes(), nil
 }
 
 // GetList tries to decode itself as a slice of RLP items. If the decoding was
 // successful it returns the decoded slice.
 func (r RLP) GetList() ([]*RLP, error) {
-	l := ListItem{}
-	if err := r.DecodeInto(&l); err != nil {
+	i, err := r.GetListItem()
+	if err != nil {
 		return nil, err
 	}
 	var items []*RLP
-	for _, v := range l.Items() {
+	for _, v := range i.Items() {
 		items = append(items, v.(*RLP))
 	}
 	return items, nil
@@ -92,21 +139,21 @@ func (r RLP) GetList() ([]*RLP, error) {
 // GetUint tries to decode itself as an uint64. If the decoding was
 // successful it returns the decoded uint64.
 func (r RLP) GetUint() (uint64, error) {
-	u := UintItem{}
-	if err := r.DecodeInto(&u); err != nil {
+	i, err := r.GetUintItem()
+	if err != nil {
 		return 0, err
 	}
-	return u.X, nil
+	return i.X, nil
 }
 
 // GetBigInt tries to decode itself as a big.Int. If the decoding was
 // successful it returns the decoded big.Int.
 func (r RLP) GetBigInt() (*big.Int, error) {
-	b := BigIntItem{}
-	if err := r.DecodeInto(&b); err != nil {
+	i, err := r.GetBigIntItem()
+	if err != nil {
 		return nil, err
 	}
-	return b.X, nil
+	return i.X, nil
 }
 
 // IsString returns true if the encoded data is a string.
@@ -135,6 +182,9 @@ func (r *RLP) DecodeRLP(data []byte) (int, error) {
 	_, dataLen, prefixLen, err := decodePrefix(data)
 	if err != nil {
 		return 0, err
+	}
+	if len(data) < int(dataLen)+prefixLen {
+		return 0, ErrUnexpectedEndOfData
 	}
 	*r = data[:dataLen+uint64(prefixLen)]
 	return int(dataLen + uint64(prefixLen)), nil
@@ -253,14 +303,14 @@ func (l *ListItem) DecodeRLP(data []byte) (int, error) {
 	data = data[prefixLen : dataLen+uint64(prefixLen)]
 	for n := 0; len(data) > 0; n++ {
 		if n < len(*l) {
-			// DecodeInto data into existing item.
+			// Decode data into existing item.
 			itemLen, err := (*l)[n].DecodeRLP(data)
 			if err != nil {
 				return 0, err
 			}
 			data = data[itemLen:]
 		} else {
-			// DecodeInto data into a new item. The data is decoded into a RLP item,
+			// Decode data into a new item. The data is decoded into a RLP item,
 			// so it will be possible to decode it into a more specific type
 			// later.
 			item := &RLP{}
