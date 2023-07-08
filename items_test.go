@@ -12,7 +12,7 @@ import (
 func TestRLP(t *testing.T) {
 	t.Run("empty-string", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x80}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x80}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -24,7 +24,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("single-byte", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x00}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x00}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -36,7 +36,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("empty-list", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0xC0}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0xC0}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsList() {
@@ -48,7 +48,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("single-item-list", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0xC1, 0x80}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0xC1, 0x80}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsList() {
@@ -60,7 +60,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("string", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x83, 'a', 'b', 'c'}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x83, 'a', 'b', 'c'}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -82,7 +82,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("bytes", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x83, 'a', 'b', 'c'}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x83, 'a', 'b', 'c'}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -101,7 +101,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("list", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0xC5, 0x80, 0x80, 0x80, 0x80, 0x80}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0xC5, 0x80, 0x80, 0x80, 0x80, 0x80}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsList() {
@@ -123,7 +123,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("uint", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x82, 0x01, 0x00}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x82, 0x01, 0x00}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -145,7 +145,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("bigInt", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x82, 0x01, 0x00}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{0x82, 0x01, 0x00}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if !rlp.IsString() {
@@ -167,7 +167,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("get-success", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{'a'}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{'a'}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		i := &StringItem{}
@@ -182,7 +182,7 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("get-failure", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{'a'}, &rlp); err != nil {
+		if _, err := DecodeTo([]byte{'a'}, &rlp); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		i := &ListItem{}
@@ -226,19 +226,19 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("decode-empty", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := DecodeTo([]byte{}, &rlp); err != ErrUnexpectedEndOfData {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
 		}
 	})
 	t.Run("decode-broken-string", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0x81}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := DecodeTo([]byte{0x81}, &rlp); err != ErrUnexpectedEndOfData {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
 		}
 	})
 	t.Run("decode-broken-list", func(t *testing.T) {
 		var rlp RLP
-		if _, err := DecodeInto([]byte{0xC1}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := DecodeTo([]byte{0xC1}, &rlp); err != ErrUnexpectedEndOfData {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
 		}
 	})
@@ -285,7 +285,7 @@ func TestStringItemDecode(t *testing.T) {
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
 			var item StringItem
-			_, err := DecodeInto(tt.data, &item)
+			_, err := DecodeTo(tt.data, &item)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
@@ -339,7 +339,7 @@ func TestListItemDecode(t *testing.T) {
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
-			_, err := DecodeInto(tt.data, tt.dest)
+			_, err := DecodeTo(tt.data, tt.dest)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
@@ -408,7 +408,7 @@ func TestUintItemDecode(t *testing.T) {
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
 			var item UintItem
-			_, err := DecodeInto(tt.data, &item)
+			_, err := DecodeTo(tt.data, &item)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
@@ -460,7 +460,7 @@ func TestBigIntItemDecode(t *testing.T) {
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
 			var item BigIntItem
-			_, err := DecodeInto(tt.data, &item)
+			_, err := DecodeTo(tt.data, &item)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)

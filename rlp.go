@@ -14,6 +14,7 @@ var ErrTooLarge = errors.New("rlp: value too large")
 type Item interface {
 	// EncodeRLP returns the RLP encoding of the item.
 	EncodeRLP() ([]byte, error)
+
 	// DecodeRLP decodes the given RLP data and returns the number of bytes
 	// read. The given data may be longer than the encoded item, in which case
 	// the remaining data is ignored.
@@ -40,9 +41,9 @@ func Decode(data []byte) (*RLP, int, error) {
 	return r, n, nil
 }
 
-// DecodeInto decode RLP data and stores the result in the value pointed to
+// DecodeTo decode RLP data and stores the result in the value pointed to
 // by dest. It returns the number of bytes read and an error, if any.
-func DecodeInto(data []byte, dest Item) (int, error) {
+func DecodeTo(data []byte, dest Item) (int, error) {
 	n, err := dest.DecodeRLP(data)
 	if err != nil {
 		return 0, err

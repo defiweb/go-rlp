@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// Decode the data
-	_, err := rlp.DecodeInto(data, &items)
+	_, err := rlp.DecodeTo(data, &items)
 	if err != nil {
 		panic(err)
 	}

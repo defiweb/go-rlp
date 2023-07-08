@@ -39,8 +39,8 @@ func (r RLP) Bytes() []byte {
 	return r
 }
 
-// DecodeInto decodes RLP encoded data into the given item.
-func (r RLP) DecodeInto(dest Item) error {
+// DecodeTo decodes RLP encoded data into the given item.
+func (r RLP) DecodeTo(dest Item) error {
 	_, err := dest.DecodeRLP(r)
 	return err
 }
@@ -56,7 +56,7 @@ func (r RLP) Length() uint64 {
 // successful it returns the decoded StringItem.
 func (r RLP) GetStringItem() (*StringItem, error) {
 	s := StringItem{}
-	if err := r.DecodeInto(&s); err != nil {
+	if err := r.DecodeTo(&s); err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -66,7 +66,7 @@ func (r RLP) GetStringItem() (*StringItem, error) {
 // successful it returns the decoded ListItem.
 func (r RLP) GetListItem() (*ListItem, error) {
 	i := ListItem{}
-	if err := r.DecodeInto(&i); err != nil {
+	if err := r.DecodeTo(&i); err != nil {
 		return nil, err
 	}
 	return &i, nil
@@ -76,7 +76,7 @@ func (r RLP) GetListItem() (*ListItem, error) {
 // successful it returns the decoded UintItem.
 func (r RLP) GetUintItem() (*UintItem, error) {
 	i := UintItem{}
-	if err := r.DecodeInto(&i); err != nil {
+	if err := r.DecodeTo(&i); err != nil {
 		return nil, err
 	}
 	return &i, nil
@@ -86,7 +86,7 @@ func (r RLP) GetUintItem() (*UintItem, error) {
 // successful it returns the decoded BigIntItem.
 func (r RLP) GetBigIntItem() (*BigIntItem, error) {
 	i := BigIntItem{}
-	if err := r.DecodeInto(&i); err != nil {
+	if err := r.DecodeTo(&i); err != nil {
 		return nil, err
 	}
 	return &i, nil
@@ -95,7 +95,7 @@ func (r RLP) GetBigIntItem() (*BigIntItem, error) {
 // Get decodes RLP encoded data into the given item and if decoding was
 // successful it invokes the fn callback.
 func (r RLP) Get(i Item, fn func(Item)) error {
-	if err := r.DecodeInto(i); err != nil {
+	if err := r.DecodeTo(i); err != nil {
 		return err
 	}
 	fn(i)

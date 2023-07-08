@@ -88,7 +88,7 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-func TestDecodeInto(t *testing.T) {
+func TestDecodeTo(t *testing.T) {
 	tests := []struct {
 		data    []byte
 		dest    Item
@@ -187,7 +187,7 @@ func TestDecodeInto(t *testing.T) {
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
-			bts, err := DecodeInto(tt.data, tt.dest)
+			bts, err := DecodeTo(tt.data, tt.dest)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Decode() error = %v, wantErr %v", err, tt.wantErr)
@@ -216,7 +216,7 @@ func FuzzDecode(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s []byte) {
-		_, _ = DecodeInto(s, &typedListItem{})
+		_, _ = DecodeTo(s, &typedListItem{})
 	})
 }
 
@@ -238,7 +238,7 @@ func (t typedListItem) EncodeRLP() ([]byte, error) {
 
 func (t *typedListItem) DecodeRLP(bytes []byte) (int, error) {
 	l := &ListItem{}
-	n, err := DecodeInto(bytes, l)
+	n, err := DecodeTo(bytes, l)
 	if err != nil {
 		return n, err
 	}
