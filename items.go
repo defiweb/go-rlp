@@ -2,6 +2,7 @@ package rlp
 
 import (
 	"bytes"
+	"encoding"
 	"math/big"
 )
 
@@ -28,6 +29,11 @@ func NewUint(x uint64) *UintItem {
 // NewBigInt creates a new BigInt item.
 func NewBigInt(x *big.Int) *BigIntItem {
 	return &BigIntItem{X: x}
+}
+
+// NewBinaryMarshaler creates a new BinaryMarshaler item.
+func NewBinaryMarshaler(x BinaryMarshaler) *BinaryMarshalerItem {
+	return &BinaryMarshalerItem{X: x}
 }
 
 // RLP is a raw RLP encoded data that can be decoded into any other type later.
@@ -86,6 +92,16 @@ func (r RLP) GetUintItem() (*UintItem, error) {
 // successful it returns the decoded BigIntItem.
 func (r RLP) GetBigIntItem() (*BigIntItem, error) {
 	i := BigIntItem{}
+	if err := r.DecodeTo(&i); err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
+// GetBinaryMarshalerItem tries to decode itself as a BinaryMarshaler. If the
+// decoding was successful it returns the decoded BinaryMarshalerItem.
+func (r RLP) GetBinaryMarshalerItem() (*BinaryMarshalerItem, error) {
+	i := BinaryMarshalerItem{}
 	if err := r.DecodeTo(&i); err != nil {
 		return nil, err
 	}
@@ -370,5 +386,44 @@ func (b *BigIntItem) DecodeRLP(d []byte) (int, error) {
 		return 0, err
 	}
 	(*b).X = new(big.Int).SetBytes(*s)
+	return i, nil
+}
+
+type BinaryMarshaler interface {
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
+}
+
+// BinaryMarshalerItem is a RLP encoded struct that implements the
+// encoding.BinaryMarshaler and encoding.BinaryUnmarshaler interfaces.
+type BinaryMarshalerItem struct {
+	X BinaryMarshaler
+}
+
+func (m BinaryMarshalerItem) EncodeRLP() ([]byte, error) {
+	if m.X == nil {
+		// For nil values, the RLP encoding is a zero-length string.
+		return []byte{stringOffset}, nil
+	}
+	data, err := m.X.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return NewBytes(data).EncodeRLP()
+}
+
+func (m *BinaryMarshalerItem) DecodeRLP(d []byte) (int, error) {
+	s := &StringItem{}
+	i, err := s.DecodeRLP(d)
+	if err != nil {
+		return 0, err
+	}
+	if m.X == nil {
+		return 0, ErrUnsupportedType
+	}
+	err = m.X.UnmarshalBinary(*s)
+	if err != nil {
+		return 0, err
+	}
 	return i, nil
 }

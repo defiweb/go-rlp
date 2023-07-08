@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRLP(t *testing.T) {
@@ -460,6 +461,55 @@ func TestBigIntItemDecode(t *testing.T) {
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
 			var item BigIntItem
+			_, err := DecodeTo(tt.data, &item)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if !reflect.DeepEqual(&item, tt.want) {
+				t.Fatalf("expected %v, got %v", tt.want, &item)
+			}
+		})
+	}
+}
+
+func TestBinaryMarshalerItemEncode(t *testing.T) {
+	tm := time.Unix(42, 0).In(time.UTC)
+	tests := []struct {
+		data *BinaryMarshalerItem
+		want []byte
+	}{
+		{&BinaryMarshalerItem{&tm}, []byte{0x8f, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x77, 0x91, 0xf7, 0x2a, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff}},
+		{&BinaryMarshalerItem{nil}, []byte{0x80}},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			got, err := Encode(tt.data)
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Fatalf("expected %x, got %x", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestBinaryMarshalerItemDecode(t *testing.T) {
+	tm := time.Unix(42, 0).In(time.UTC)
+	tests := []struct {
+		data    []byte
+		want    *BinaryMarshalerItem
+		wantErr bool
+	}{
+		{[]byte{0x8f, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x77, 0x91, 0xf7, 0x2a, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff}, &BinaryMarshalerItem{&tm}, false},
+		{[]byte{}, nil, true},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			item := BinaryMarshalerItem{X: &time.Time{}}
 			_, err := DecodeTo(tt.data, &item)
 			if tt.wantErr {
 				if err == nil {
