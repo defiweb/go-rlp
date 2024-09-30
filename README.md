@@ -2,6 +2,8 @@
 
 The `go-rlp` package provides an implementation of RLP serialization format.
 
+https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
+
 ## Installation
 
 ```bash
@@ -17,16 +19,16 @@ package main
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/defiweb/go-rlp"
 )
 
 func main() {
-	list := rlp.NewList()
-	list.Append(rlp.NewString("foo"))
-	list.Append(rlp.NewString("bar"))
-	list.Append(rlp.NewBigInt(big.NewInt(42)))
+	list := rlp.List{
+		rlp.String("foo"),
+		rlp.String("bar"),
+		rlp.Uint(42),
+	}
 
 	enc, err := rlp.Encode(list)
 	if err != nil {
@@ -43,8 +45,8 @@ func main() {
 package main
 
 import (
-	"fmt"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/defiweb/go-rlp"
 )
@@ -52,36 +54,36 @@ import (
 func main() {
 	data, _ := hex.DecodeString("c983666f6f836261722a")
 
-	items := rlp.ListItem{
-		&rlp.StringItem{},
-		&rlp.StringItem{},
-		&rlp.BigIntItem{},
-	}
+	// Define the data structure
+	var item1 rlp.String
+	var item2 rlp.String
+	var item3 rlp.Uint
+	list := rlp.List{&item1, &item2, &item3}
 
 	// Decode the data
-	_, err := rlp.DecodeTo(data, &items)
+	_, err := rlp.Decode(data, &list)
 	if err != nil {
 		panic(err)
 	}
 
 	// Print the decoded data
-	fmt.Println(items[0].(*rlp, StringItem).String())
-	fmt.Println(items[1].(*rlp, StringItem).String())
-	fmt.Println(items[2].(*rlp, BigIntItem).X)
+	fmt.Println(item1.Get())
+	fmt.Println(item2.Get())
+	fmt.Println(item3.Get())
 }
 ```
 
 ### Decoding data (method 2)
 
-This method does not require a prior definition of the data structure, hence it can be useful when the data structure is
-not known in advance.
+This method does not require a prior definition of the data structure, making it useful when the data structure is not
+known in advance.
 
 ```go
 package main
 
 import (
-	"fmt"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/defiweb/go-rlp"
 )
@@ -90,13 +92,13 @@ func main() {
 	data, _ := hex.DecodeString("c983666f6f836261722a")
 
 	// Decode the data
-	dec, _, err := rlp.Decode(data)
+	dec, _, err := rlp.DecodeLazy(data)
 	if err != nil {
 		panic(err)
 	}
 
 	// Check if the decoded data is a list
-	list, err := dec.GetList()
+	list, err := dec.List()
 	if err != nil {
 		panic(err)
 	}
@@ -105,16 +107,19 @@ func main() {
 	}
 
 	// Check if list items are strings
-	if !list[0].IsString() || list[1].IsString() || list[2].IsString() {
-		panic("expected strings")
+	if !list[0].IsString() || !list[1].IsString() || !list[2].IsString() {
+		panic("unexpected types")
 	}
 
 	// Decode items
-	foo, _ := list[0].GetString()
-	bar, _ := list[1].GetString()
-	num, _ := list[2].GetBigInt()
+	foo, _ := list[0].String()
+	bar, _ := list[1].String()
+	num, _ := list[2].Uint()
 
-	fmt.Println(foo, bar, num)
+	// Print the decoded data
+	fmt.Println(foo.Get())
+	fmt.Println(bar.Get())
+	fmt.Println(num.Get())
 }
 ```
 
