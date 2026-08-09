@@ -1,13 +1,13 @@
 # go-rlp
 
-The `go-rlp` package provides an implementation of RLP serialization format.
+The `go-rlp` package provides an implementation of the RLP serialization format.
 
 https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp/
 
 ## Installation
 
 ```bash
-go get github.com/ethereum/go-rlp
+go get github.com/defiweb/go-rlp
 ```
 
 ## Usage

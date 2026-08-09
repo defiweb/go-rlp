@@ -8,7 +8,12 @@ import (
 type RLP []byte
 
 // Decode decodes RLP encoded data into the given value.
+//
+// Any data after the first item is ignored.
 func (r RLP) Decode(dst Decoder) error {
+	if isNil(dst) {
+		return ErrNilValue
+	}
 	_, err := dst.DecodeRLP(r)
 	return err
 }
@@ -16,35 +21,31 @@ func (r RLP) Decode(dst Decoder) error {
 // Length returns the length of the string or number of items in the list.
 // If the item is invalid, it returns 0.
 func (r RLP) Length() int {
-	switch {
-	case r.IsString():
-		_, dataLen, _, _ := decodePrefix(r)
+	_, dataLen, prefixLen, err := decodePrefix(r)
+	if err != nil {
+		return 0
+	}
+	totalLen := int(dataLen + uint64(prefixLen))
+	if len(r) < totalLen {
+		return 0
+	}
+	if r.IsString() {
 		return int(dataLen)
-	case r.IsList():
-		_, dataLen, prefixLen, err := decodePrefix(r)
+	}
+	n := 0
+	d := r[prefixLen:totalLen]
+	for ; len(d) > 0; n++ {
+		_, dataLen, prefixLen, err := decodePrefix(d)
 		if err != nil {
 			return 0
 		}
-		totalLen := int(dataLen + uint64(prefixLen))
-		if len(r) < totalLen {
+		itemLen := int(dataLen + uint64(prefixLen))
+		if itemLen > len(d) || itemLen == 0 {
 			return 0
 		}
-		n := 0
-		d := r[prefixLen:totalLen]
-		for ; len(d) > 0; n++ {
-			_, dataLen, prefixLen, err := decodePrefix(d)
-			if err != nil {
-				return 0
-			}
-			totalLen := int(dataLen + uint64(prefixLen))
-			if totalLen > len(d) || totalLen == 0 {
-				return 0
-			}
-			d = d[totalLen:]
-		}
-		return n
+		d = d[itemLen:]
 	}
-	return 0
+	return n
 }
 
 // String attempts to decode itself as a string. If the decoding is
@@ -105,10 +106,20 @@ func (r RLP) IsList() bool {
 
 // EncodeRLP implements the Encoder interface.
 func (r RLP) EncodeRLP() ([]byte, error) {
-	return r, nil
+	_, dataLen, prefixLen, err := decodePrefix(r)
+	if err != nil {
+		return nil, err
+	}
+	totalLen := int(dataLen + uint64(prefixLen))
+	if len(r) < totalLen {
+		return nil, ErrUnexpectedEndOfData
+	}
+	return r[:totalLen], nil
 }
 
 // DecodeRLP implements the Decoder interface.
+//
+// The decoded value shares memory with the given data.
 func (r *RLP) DecodeRLP(data []byte) (int, error) {
 	_, dataLen, prefixLen, err := decodePrefix(data)
 	if err != nil {
@@ -169,6 +180,8 @@ func (b Bytes) EncodeRLP() ([]byte, error) {
 }
 
 // DecodeRLP implements the Decoder interface.
+//
+// The decoded value shares memory with the given data.
 func (b *Bytes) DecodeRLP(data []byte) (int, error) {
 	return decodeBytes(data, (*[]byte)(b))
 }
@@ -205,8 +218,8 @@ func (u *Uint) DecodeRLP(data []byte) (int, error) {
 type BigInt big.Int
 
 // Get returns the big.Int value.
-func (b BigInt) Get() *big.Int {
-	return (*big.Int)(&b)
+func (b *BigInt) Get() *big.Int {
+	return (*big.Int)(b)
 }
 
 // Ptr returns a pointer to the big.Int value.
@@ -236,7 +249,9 @@ func (b *BigInt) DecodeRLP(data []byte) (int, error) {
 // or decoding will fail.
 //
 // During decoding, the data is decoded into existing items if they are already
-// in the list. Otherwise, the items are decoded into RLP types.
+// in the list. If the decoded list is longer, the remaining items are decoded
+// into RLP types and appended to the list. If the decoded list is shorter,
+// ErrUnexpectedNumberOfItems is returned.
 type List []any
 
 // Get returns the slice of items.
@@ -276,8 +291,8 @@ func (l *List) DecodeRLP(data []byte) (int, error) {
 // or decoding will fail.
 //
 // During decoding, the data is decoded into existing items if they are already
-// in the list. If the list is shorter than the data, new items are appended to
-// the list.
+// in the list. If the decoded list is longer, new items are appended to the
+// list. If the decoded list is shorter, ErrUnexpectedNumberOfItems is returned.
 type TypedList[T any] []*T
 
 // Get returns the slice of items.

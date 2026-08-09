@@ -1,6 +1,8 @@
 package rlp
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -69,6 +71,22 @@ func TestEncode(t *testing.T) {
 		},
 		{
 			data:    errItem{},
+			wantErr: true,
+		},
+		{
+			data:    (*Uint)(nil),
+			wantErr: true,
+		},
+		{
+			data:    List{(*Uint)(nil)},
+			wantErr: true,
+		},
+		{
+			data:    List{nil},
+			wantErr: true,
+		},
+		{
+			data:    TypedList[Uint]{nil},
 			wantErr: true,
 		},
 	}
@@ -184,6 +202,41 @@ func TestDecodeTo(t *testing.T) {
 			dest:    ptr(List{}),
 			wantErr: true,
 		},
+		{
+			data:    []byte{0x80},
+			dest:    (*String)(nil),
+			wantErr: true,
+		},
+		{
+			data: []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
+			dest: ptr(TypedList[String]{nil, nil}),
+			want: ptr(TypedList[String]{ptr(String("dog")), ptr(String("cat"))}),
+		},
+		{
+			data:    []byte{0xc5, 0x83, 0x64, 0x6f, 0x67},
+			dest:    ptr(List{new(String), new(String)}),
+			wantErr: true,
+		},
+		{
+			data:    []byte{0xc0},
+			dest:    ptr(List{new(String)}),
+			wantErr: true,
+		},
+		{
+			data:    []byte{0x81, 0x61},
+			dest:    ptr(String("")),
+			wantErr: true,
+		},
+		{
+			data:    append([]byte{0x80 + 55 + 1, 0x37}, []byte(strings.Repeat("a", 55))...),
+			dest:    ptr(String("")),
+			wantErr: true,
+		},
+		{
+			data:    append([]byte{0x80 + 55 + 2, 0x00, 0x38}, []byte(strings.Repeat("a", 56))...),
+			dest:    ptr(String("")),
+			wantErr: true,
+		},
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -194,13 +247,41 @@ func TestDecodeTo(t *testing.T) {
 				}
 				return
 			}
+			if err != nil {
+				t.Fatalf("Decode() unexpected error = %v", err)
+			}
 			if !reflect.DeepEqual(tt.dest, tt.want) {
 				t.Errorf("Decode() got = %#v, want %#v", tt.dest, tt.want)
 			}
-			if err == nil && bts != len(tt.data) {
+			if bts != len(tt.data) {
 				t.Errorf("Decode() bts = %v, want %v", bts, len(tt.data))
 			}
 		})
+	}
+}
+
+func TestDecodeStream(t *testing.T) {
+	// The Decode function accepts a single item only, but items that are
+	// followed by other data can be decoded using the DecodeRLP method or the
+	// DecodeLazy function.
+	data := []byte{0x83, 'f', 'o', 'o', 0x83, 'b', 'a', 'r'}
+	if _, err := Decode(data, new(String)); !errors.Is(err, ErrUnexpectedTrailingData) {
+		t.Fatalf("expected ErrTrailingData, got %v", err)
+	}
+	var want = []string{"foo", "bar"}
+	for i := 0; len(data) > 0; i++ {
+		item, n, err := DecodeLazy(data)
+		if err != nil {
+			t.Fatalf("DecodeLazy() failed: %v", err)
+		}
+		s, err := item.String()
+		if err != nil {
+			t.Fatalf("String() failed: %v", err)
+		}
+		if s.Get() != want[i] {
+			t.Fatalf("expected %q, got %q", want[i], s.Get())
+		}
+		data = data[n:]
 	}
 }
 
@@ -217,6 +298,32 @@ func FuzzDecode(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, s []byte) {
 		_, _ = Decode(s, &testList{})
+	})
+}
+
+// FuzzDecodeCanonical verifies that only canonically encoded data is accepted,
+// that is, that encoding the decoded data returns the original bytes.
+func FuzzDecodeCanonical(f *testing.F) {
+	for _, s := range [][]byte{
+		{listOffset},
+		{listOffset + 1, 0x80},
+		{listOffset + 2, 0x81, 0x80},
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s []byte) {
+		var list List
+		n, err := Decode(s, &list)
+		if err != nil {
+			return
+		}
+		enc, err := Encode(list)
+		if err != nil {
+			t.Fatalf("Encode() failed: %v", err)
+		}
+		if !bytes.Equal(enc, s[:n]) {
+			t.Fatalf("non-canonical data accepted: got %x, want %x", s[:n], enc)
+		}
 	})
 }
 
@@ -237,8 +344,10 @@ func (t testList) EncodeRLP() ([]byte, error) {
 }
 
 func (t *testList) DecodeRLP(bytes []byte) (int, error) {
+	// Note that the Decode function must not be used here, because a nested
+	// item may be followed by other items.
 	l := TypedList[RLP]{}
-	n, err := Decode(bytes, &l)
+	n, err := l.DecodeRLP(bytes)
 	if err != nil {
 		return n, err
 	}

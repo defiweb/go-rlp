@@ -2,6 +2,7 @@ package rlp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -184,20 +185,58 @@ func TestRLP(t *testing.T) {
 	})
 	t.Run("decode-empty", func(t *testing.T) {
 		var rlp RLP
-		if _, err := Decode([]byte{}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := Decode([]byte{}, &rlp); !errors.Is(err, ErrUnexpectedEndOfData) {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
 		}
 	})
 	t.Run("decode-broken-string", func(t *testing.T) {
 		var rlp RLP
-		if _, err := Decode([]byte{0x81}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := Decode([]byte{0x81}, &rlp); !errors.Is(err, ErrUnexpectedEndOfData) {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
 		}
 	})
 	t.Run("decode-broken-list", func(t *testing.T) {
 		var rlp RLP
-		if _, err := Decode([]byte{0xC1}, &rlp); err != ErrUnexpectedEndOfData {
+		if _, err := Decode([]byte{0xC1}, &rlp); !errors.Is(err, ErrUnexpectedEndOfData) {
 			t.Fatalf("expected ErrUnexpectedEndOfData, got %v", err)
+		}
+	})
+	t.Run("decode-trailing-data", func(t *testing.T) {
+		// The RLP type is a view over the encoded data, hence its methods
+		// operate on the first item and ignore any data that follows it.
+		rlp := RLP{0x83, 'a', 'b', 'c', 0x83, 'd', 'e', 'f'}
+		if rlp.Length() != 3 {
+			t.Fatalf("expected length 3, got %v", rlp.Length())
+		}
+		s, err := rlp.String()
+		if err != nil {
+			t.Fatalf("String() failed: %v", err)
+		}
+		if s.Get() != "abc" {
+			t.Fatalf("String() returned %q, expected %q", s.Get(), "abc")
+		}
+		var item String
+		if err := rlp.Decode(&item); err != nil {
+			t.Fatalf("Decode() failed: %v", err)
+		}
+		if item.Get() != "abc" {
+			t.Fatalf("Decode() returned %q, expected %q", item.Get(), "abc")
+		}
+	})
+	t.Run("encode-incomplete", func(t *testing.T) {
+		for _, rlp := range []RLP{nil, {}, {0x83, 'a'}, {0xC1}} {
+			if _, err := Encode(rlp); err == nil {
+				t.Fatalf("%x: EncodeRLP() should have failed", rlp)
+			}
+		}
+	})
+	t.Run("encode-trailing-data", func(t *testing.T) {
+		got, err := Encode(RLP{0x83, 'a', 'b', 'c', 'd'})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !bytes.Equal(got, []byte{0x83, 'a', 'b', 'c'}) {
+			t.Fatalf("expected %x, got %x", []byte{0x83, 'a', 'b', 'c'}, got)
 		}
 	})
 }
@@ -232,12 +271,18 @@ func TestStringDecode(t *testing.T) {
 		wantErr bool
 	}{
 		{[]byte{0x80}, "", false},
-		{[]byte{0x81, 'a'}, "a", false},
+		{[]byte{'a'}, "a", false},
+		{[]byte{0x81, 0x80}, "\x80", false},
 		{[]byte{0x82, 'a', 'b'}, "ab", false},
-		{[]byte{0x82, 'a', 'b', 'c'}, "ab", false}, // ignore trailing data
+		{[]byte{0x82, 'a', 'b', 'c'}, "", true}, // trailing data
 		{append([]byte{0xB7}, bytes.Repeat([]byte{'a'}, 55)...), string(bytes.Repeat([]byte{'a'}, 55)), false},
 		{[]byte{0x80 + 56}, "", true},
 		{[]byte{0x80 + 56, 255}, "", true},
+		{[]byte{0x81, 'a'}, "", true},                                                // non-canonical single byte
+		{[]byte{0x81}, "", true},                                                     // missing data
+		{append([]byte{0xB8, 55}, bytes.Repeat([]byte{'a'}, 55)...), "", true},       // non-canonical length
+		{append([]byte{0xB9, 0x00, 56}, bytes.Repeat([]byte{'a'}, 56)...), "", true}, // leading zero in length
+		{append([]byte{0xB8, 56}, bytes.Repeat([]byte{'a'}, 56)...), string(bytes.Repeat([]byte{'a'}, 56)), false}, // canonical long form
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -248,6 +293,9 @@ func TestStringDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if item.Get() != tt.want {
 				t.Fatalf("expected %q, got %q", tt.want, item.Get())
@@ -286,12 +334,14 @@ func TestBytesDecode(t *testing.T) {
 		wantErr bool
 	}{
 		{[]byte{0x80}, []byte(""), false},
-		{[]byte{0x81, 'a'}, []byte("a"), false},
+		{[]byte{'a'}, []byte("a"), false},
+		{[]byte{0x81, 0x80}, []byte("\x80"), false},
 		{[]byte{0x82, 'a', 'b'}, []byte("ab"), false},
-		{[]byte{0x82, 'a', 'b', 'c'}, []byte("ab"), false}, // ignore trailing data
+		{[]byte{0x82, 'a', 'b', 'c'}, nil, true}, // trailing data
 		{append([]byte{0xB7}, bytes.Repeat([]byte{'a'}, 55)...), bytes.Repeat([]byte{'a'}, 55), false},
 		{[]byte{0x80 + 56}, []byte(""), true},
 		{[]byte{0x80 + 56, 255}, []byte(""), true},
+		{[]byte{0x81, 'a'}, nil, true}, // non-canonical single byte
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -302,6 +352,9 @@ func TestBytesDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if !bytes.Equal(item.Get(), tt.want) {
 				t.Fatalf("expected %q, got %q", tt.want, item.Get())
@@ -361,6 +414,11 @@ func TestUintDecode(t *testing.T) {
 		{[]byte{0x88, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, math.MaxUint64, false},
 		{[]byte{0x89, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, 0, true},
 		{[]byte{}, 0, true},
+		{[]byte{0x82, 0x00, 0x01}, 0, true}, // leading zero
+		{[]byte{0x00}, 0, true},             // zero must be encoded as an empty string
+		// A string longer than 255 bytes must not overflow the length of the
+		// integer.
+		{append([]byte{0xB9, 0x01, 0x00}, bytes.Repeat([]byte{0x01}, 256)...), 0, true},
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -371,6 +429,9 @@ func TestUintDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if !reflect.DeepEqual(item.Get(), tt.want) {
 				t.Fatalf("expected %v, got %v", tt.want, item.Get())
@@ -413,6 +474,7 @@ func TestBigIntDecode(t *testing.T) {
 		{[]byte{0x7F}, big.NewInt(127), false},
 		{[]byte{0x81, 0x80}, big.NewInt(128), false},
 		{[]byte{}, nil, true},
+		{[]byte{0x82, 0x00, 0x01}, nil, true}, // leading zero
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -423,6 +485,9 @@ func TestBigIntDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if !reflect.DeepEqual(item.Get(), tt.want) {
 				t.Fatalf("expected %v, got %v", tt.want, item.Get())
@@ -465,10 +530,13 @@ func TestListDecode(t *testing.T) {
 		{[]byte{0xC0 + 1, 'a'}, []any{ptr(String("a"))}, []any{new(String)}, false},
 		{[]byte{0xC0 + 1, 'a'}, []any{&RLP{0x61}}, []any{}, false},
 		{[]byte{0xC0 + 2, 'a', 'b'}, []any{ptr(String("a")), ptr(Bytes("b"))}, []any{new(String), new(Bytes)}, false},
-		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, []any{ptr(String("a")), ptr(String("b"))}, []any{new(String), new(String)}, false}, // ignore trailing data
+		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, nil, []any{new(String), new(String)}, true}, // trailing data
 		{append([]byte{0xC0 + 56, 56}, bytes.Repeat([]byte{'a'}, 56)...), makeSlice(56, ptr(String("a"))), makeSlice(56, new(String)), false},
 		{[]byte{}, nil, []any{}, true},
 		{[]byte{0xC0 + 56, 1}, nil, []any{}, true},
+		{[]byte{0xC0 + 1, 'a'}, nil, []any{new(String), new(String)}, true}, // list shorter than expected
+		{[]byte{0xC0}, nil, []any{new(String)}, true},                       // empty list, but an item is expected
+		{[]byte{0xC0 + 1, 'a'}, []any{&RLP{'a'}}, []any{nil}, false},        // nil item is replaced
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -478,6 +546,9 @@ func TestListDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if !reflect.DeepEqual(tt.dest, tt.want) {
 				t.Fatalf("expected %v, got %v", tt.want, tt.dest)
@@ -518,9 +589,12 @@ func TestTypedListDecode(t *testing.T) {
 		{[]byte{0xC0}, nil, []*String{}, false},
 		{[]byte{0xC0 + 1, 'a'}, []*String{ptr(String("a"))}, []*String{new(String)}, false},
 		{[]byte{0xC0 + 2, 'a', 'b'}, []*String{ptr(String("a")), ptr(String("b"))}, []*String{new(String), new(String)}, false},
-		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, []*String{ptr(String("a")), ptr(String("b"))}, []*String{new(String), new(String)}, false}, // ignore trailing data
+		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, nil, []*String{new(String), new(String)}, true}, // trailing data
 		{[]byte{}, nil, []*String{}, true},
 		{[]byte{0xC0 + 56, 1}, nil, []*String{}, true},
+		{[]byte{0xC0 + 1, 'a'}, nil, []*String{new(String), new(String)}, true},                                 // list shorter than expected
+		{[]byte{0xC0}, nil, []*String{new(String)}, true},                                                       // empty list, but an item is expected
+		{[]byte{0xC0 + 2, 'a', 'b'}, []*String{ptr(String("a")), ptr(String("b"))}, []*String{nil, nil}, false}, // nil items are replaced
 	}
 	for n, tt := range tests {
 		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
@@ -530,6 +604,9 @@ func TestTypedListDecode(t *testing.T) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 			if !reflect.DeepEqual(tt.dest, tt.want) {
 				t.Fatalf("expected %v, got %v", tt.want, tt.dest)
