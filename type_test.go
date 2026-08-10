@@ -580,6 +580,117 @@ func TestTypedListEncode(t *testing.T) {
 	}
 }
 
+func TestVarListEncode(t *testing.T) {
+	tests := []struct {
+		data []any
+		want []byte
+	}{
+		{[]any{}, []byte{0xC0}},
+		{[]any{String("a")}, []byte{0xC0 + 1, 'a'}},
+		{[]any{String("a"), Bytes("b")}, []byte{0xC0 + 2, 'a', 'b'}},
+		{makeSlice(56, String("a")), append([]byte{0xC0 + 56, 56}, bytes.Repeat([]byte{'a'}, 56)...)},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			got, err := Encode(VarList(tt.data))
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Fatalf("expected %x, got %x", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestVarListDecode(t *testing.T) {
+	tests := []struct {
+		data    []byte
+		want    []any
+		wantErr bool
+	}{
+		{[]byte{0xC0}, nil, false},
+		{[]byte{0xC0 + 1, 'a'}, []any{&RLP{0x61}}, false},
+		{[]byte{0xC0 + 2, 'a', 'b'}, []any{&RLP{0x61}, &RLP{0x62}}, false},
+		{append([]byte{0xC0 + 56, 56}, bytes.Repeat([]byte{'a'}, 56)...), makeSlice(56, &RLP{0x61}), false},
+		{[]byte{}, nil, true},
+		{[]byte{0xC0 + 56, 1}, nil, true},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			var dest VarList
+			_, err := Decode(tt.data, &dest)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !reflect.DeepEqual([]any(dest), tt.want) {
+				t.Fatalf("expected %v, got %v", tt.want, dest)
+			}
+		})
+	}
+}
+
+func TestVarTypedListEncode(t *testing.T) {
+	tests := []struct {
+		data []*String
+		want []byte
+	}{
+		{[]*String{}, []byte{0xC0}},
+		{[]*String{ptr(String("a"))}, []byte{0xC0 + 1, 'a'}},
+		{[]*String{ptr(String("a")), ptr(String("b"))}, []byte{0xC0 + 2, 'a', 'b'}},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			got, err := Encode(VarTypedList[String](tt.data))
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Fatalf("expected %x, got %x", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestVarTypedListDecode(t *testing.T) {
+	tests := []struct {
+		data    []byte
+		want    []*String
+		wantErr bool
+	}{
+		{[]byte{0xC0}, nil, false},
+		{[]byte{0xC0 + 1, 'a'}, []*String{ptr(String("a"))}, false},
+		{[]byte{0xC0 + 2, 'a', 'b'}, []*String{ptr(String("a")), ptr(String("b"))}, false},
+		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, nil, true}, // trailing data
+		{[]byte{}, nil, true},
+		{[]byte{0xC0 + 56, 1}, nil, true},
+	}
+	for n, tt := range tests {
+		t.Run(fmt.Sprintf("case-%d", n+1), func(t *testing.T) {
+			var dest VarTypedList[String]
+			_, err := Decode(tt.data, &dest)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !reflect.DeepEqual([]*String(dest), tt.want) {
+				t.Fatalf("expected %v, got %v", tt.want, dest)
+			}
+		})
+	}
+}
+
 func TestTypedListDecode(t *testing.T) {
 	tests := []struct {
 		data    []byte

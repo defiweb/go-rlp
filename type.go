@@ -64,8 +64,11 @@ func (r RLP) Bytes() (v Bytes, err error) {
 
 // List attempts to decode itself as a list. If the decoding is
 // successful, it returns the decoded list.
-func (r RLP) List() (l TypedList[RLP], err error) {
-	_, err = decodeTypedList(r, (*[]*RLP)(&l), func() *RLP { return new(RLP) }, true)
+//
+// The list may be of any length. Items of the returned list are raw RLP
+// items that can be decoded further.
+func (r RLP) List() (l VarTypedList[RLP], err error) {
+	_, err = (&l).DecodeRLP(r)
 	return
 }
 
@@ -328,4 +331,85 @@ func (l TypedList[T]) EncodeRLP() ([]byte, error) {
 // DecodeRLP implements the Decoder interface.
 func (l *TypedList[T]) DecodeRLP(data []byte) (int, error) {
 	return decodeTypedList(data, (*[]*T)(l), func() *T { return new(T) }, false)
+}
+
+// VarList represents an RLP list of variable length whose items are decoded
+// as raw RLP items.
+//
+// List items must implement the Encoder interface if the list is being encoded.
+// Otherwise, the encoding will fail.
+//
+// During decoding, any number of items is accepted. Each decoded item is
+// appended to the list as a raw RLP item that can be decoded further.
+type VarList []any
+
+// Get returns the slice of items.
+func (l VarList) Get() []any {
+	return l
+}
+
+// Ptr returns a pointer to the slice of items.
+func (l *VarList) Ptr() *[]any {
+	return (*[]any)(l)
+}
+
+// Set sets the slice of items.
+func (l *VarList) Set(items ...any) {
+	*l = items
+}
+
+// Add appends the given items to the list.
+func (l *VarList) Add(items ...any) {
+	*l = append(*l, items...)
+}
+
+// EncodeRLP implements the Encoder interface.
+func (l VarList) EncodeRLP() ([]byte, error) {
+	return encodeList(l)
+}
+
+// DecodeRLP implements the Decoder interface.
+func (l *VarList) DecodeRLP(data []byte) (int, error) {
+	return decodeTypedList(data, (*[]any)(l), func() any { return new(RLP) }, true)
+}
+
+// VarTypedList represents an RLP list of variable length whose items are all
+// the same type.
+//
+// The T type must implement the Encoder interface if the list is being encoded,
+// or the Decoder interface if the list is being decoded. Otherwise, the encoding
+// or decoding will fail.
+//
+// During decoding, any number of items is accepted. Each decoded item is
+// appended to the list as a new *T value.
+type VarTypedList[T any] []*T
+
+// Get returns the slice of items.
+func (l VarTypedList[T]) Get() []*T {
+	return l
+}
+
+// Ptr returns a pointer to the slice of items.
+func (l *VarTypedList[T]) Ptr() *[]*T {
+	return (*[]*T)(l)
+}
+
+// Set sets the slice of items.
+func (l *VarTypedList[T]) Set(items ...*T) {
+	*l = items
+}
+
+// Add appends the given items to the list.
+func (l *VarTypedList[T]) Add(items ...*T) {
+	*l = append(*l, items...)
+}
+
+// EncodeRLP implements the Encoder interface.
+func (l VarTypedList[T]) EncodeRLP() ([]byte, error) {
+	return encodeTypedList(l)
+}
+
+// DecodeRLP implements the Decoder interface.
+func (l *VarTypedList[T]) DecodeRLP(data []byte) (int, error) {
+	return decodeTypedList(data, (*[]*T)(l), func() *T { return new(T) }, true)
 }
