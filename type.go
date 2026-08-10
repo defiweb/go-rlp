@@ -65,7 +65,7 @@ func (r RLP) Bytes() (v Bytes, err error) {
 // List attempts to decode itself as a list. If the decoding is
 // successful, it returns the decoded list.
 func (r RLP) List() (l TypedList[RLP], err error) {
-	_, err = (&l).DecodeRLP(r)
+	_, err = decodeTypedList(r, (*[]*RLP)(&l), func() *RLP { return new(RLP) }, true)
 	return
 }
 
@@ -85,8 +85,6 @@ func (r RLP) BigInt() (v *BigInt, err error) {
 }
 
 // IsString returns true if the encoded data is an RLP string.
-// Do not confuse this with the Go string type; an RLP string could be decoded
-// as a string, byte slice, uint64, or big.Int.
 // If the RLP data is empty, it returns false.
 func (r RLP) IsString() bool {
 	if len(r) == 0 {
@@ -248,10 +246,13 @@ func (b *BigInt) DecodeRLP(data []byte) (int, error) {
 // or the Decoder interface if the list is being decoded. Otherwise, the encoding
 // or decoding will fail.
 //
-// During decoding, the data is decoded into existing items if they are already
-// in the list. If the decoded list is longer, the remaining items are decoded
-// into RLP types and appended to the list. If the decoded list is shorter,
+// During decoding, the list declares the expected structure of the data, hence
+// the data is decoded into the items that are already in the list, and the
+// number of items in the data must match the length of the list, otherwise
 // ErrUnexpectedNumberOfItems is returned.
+//
+// To decode a list whose structure is not known in advance, use DecodeLazy and
+// the RLP type.
 type List []any
 
 // Get returns the slice of items.
@@ -290,9 +291,13 @@ func (l *List) DecodeRLP(data []byte) (int, error) {
 // or the Decoder interface if the list is being decoded. Otherwise, the encoding
 // or decoding will fail.
 //
-// During decoding, the data is decoded into existing items if they are already
-// in the list. If the decoded list is longer, new items are appended to the
-// list. If the decoded list is shorter, ErrUnexpectedNumberOfItems is returned.
+// During decoding, the list declares the expected structure of the data, hence
+// the data is decoded into the items that are already in the list, and the
+// number of items in the data must match the length of the list, otherwise
+// ErrUnexpectedNumberOfItems is returned. Nil items are replaced with new ones.
+//
+// To decode a list whose structure is not known in advance, use DecodeLazy and
+// the RLP type.
 type TypedList[T any] []*T
 
 // Get returns the slice of items.
@@ -322,5 +327,5 @@ func (l TypedList[T]) EncodeRLP() ([]byte, error) {
 
 // DecodeRLP implements the Decoder interface.
 func (l *TypedList[T]) DecodeRLP(data []byte) (int, error) {
-	return decodeTypedList(data, (*[]*T)(l), func() *T { return new(T) })
+	return decodeTypedList(data, (*[]*T)(l), func() *T { return new(T) }, false)
 }

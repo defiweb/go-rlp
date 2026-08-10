@@ -151,8 +151,14 @@ func TestDecodeTo(t *testing.T) {
 			want: ptr(List(nil)),
 		},
 		{
+			// An empty destination expects an empty list.
+			data:    []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
+			dest:    ptr(List{}),
+			wantErr: true,
+		},
+		{
 			data: []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
-			dest: ptr(List{}),
+			dest: ptr(List{new(RLP), new(RLP)}),
 			want: ptr(List{&RLP{0x83, 0x64, 0x6f, 0x67}, &RLP{0x83, 0x63, 0x61, 0x74}}),
 		},
 		{
@@ -223,6 +229,24 @@ func TestDecodeTo(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			// The decoded list is longer than the expected one.
+			data:    []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
+			dest:    ptr(List{new(String)}),
+			wantErr: true,
+		},
+		{
+			// An empty destination expects an empty list.
+			data:    []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
+			dest:    ptr(TypedList[String]{}),
+			wantErr: true,
+		},
+		{
+			// A list of an unknown length can be sized using RLP.Length.
+			data: []byte{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74},
+			dest: ptr(make(TypedList[String], RLP{0xc8, 0x83, 0x64, 0x6f, 0x67, 0x83, 0x63, 0x61, 0x74}.Length())),
+			want: ptr(TypedList[String]{ptr(String("dog")), ptr(String("cat"))}),
+		},
+		{
 			data:    []byte{0x81, 0x61},
 			dest:    ptr(String("")),
 			wantErr: true,
@@ -266,7 +290,7 @@ func TestDecodeStream(t *testing.T) {
 	// DecodeLazy function.
 	data := []byte{0x83, 'f', 'o', 'o', 0x83, 'b', 'a', 'r'}
 	if _, err := Decode(data, new(String)); !errors.Is(err, ErrUnexpectedTrailingData) {
-		t.Fatalf("expected ErrTrailingData, got %v", err)
+		t.Fatalf("expected ErrUnexpectedTrailingData, got %v", err)
 	}
 	var want = []string{"foo", "bar"}
 	for i := 0; len(data) > 0; i++ {
@@ -312,14 +336,31 @@ func FuzzDecodeCanonical(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s []byte) {
-		var list List
-		n, err := Decode(s, &list)
+		item, n, err := DecodeLazy(s)
 		if err != nil {
 			return
 		}
-		enc, err := Encode(list)
-		if err != nil {
-			t.Fatalf("Encode() failed: %v", err)
+		// Decode the item and encode it again. Lists are decoded item by item,
+		// strings are decoded as byte slices.
+		var enc []byte
+		if item.IsList() {
+			list, err := item.List()
+			if err != nil {
+				return
+			}
+			enc, err = Encode(list)
+			if err != nil {
+				t.Fatalf("Encode() failed: %v", err)
+			}
+		} else {
+			b, err := item.Bytes()
+			if err != nil {
+				return
+			}
+			enc, err = Encode(b)
+			if err != nil {
+				t.Fatalf("Encode() failed: %v", err)
+			}
 		}
 		if !bytes.Equal(enc, s[:n]) {
 			t.Fatalf("non-canonical data accepted: got %x, want %x", s[:n], enc)
@@ -344,10 +385,15 @@ func (t testList) EncodeRLP() ([]byte, error) {
 }
 
 func (t *testList) DecodeRLP(bytes []byte) (int, error) {
-	// Note that the Decode function must not be used here, because a nested
-	// item may be followed by other items.
-	l := TypedList[RLP]{}
-	n, err := l.DecodeRLP(bytes)
+	// The structure of the data is not known in advance, hence it is decoded
+	// using the RLP type. Note that the Decode function must not be used here,
+	// because a nested item may be followed by other items.
+	var r RLP
+	n, err := r.DecodeRLP(bytes)
+	if err != nil {
+		return n, err
+	}
+	l, err := r.List()
 	if err != nil {
 		return n, err
 	}

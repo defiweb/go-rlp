@@ -528,13 +528,14 @@ func TestListDecode(t *testing.T) {
 	}{
 		{[]byte{0xC0}, nil, []any{}, false},
 		{[]byte{0xC0 + 1, 'a'}, []any{ptr(String("a"))}, []any{new(String)}, false},
-		{[]byte{0xC0 + 1, 'a'}, []any{&RLP{0x61}}, []any{}, false},
+		{[]byte{0xC0 + 1, 'a'}, nil, []any{}, true}, // an empty list expects empty data
 		{[]byte{0xC0 + 2, 'a', 'b'}, []any{ptr(String("a")), ptr(Bytes("b"))}, []any{new(String), new(Bytes)}, false},
 		{[]byte{0xC0 + 2, 'a', 'b', 'c'}, nil, []any{new(String), new(String)}, true}, // trailing data
 		{append([]byte{0xC0 + 56, 56}, bytes.Repeat([]byte{'a'}, 56)...), makeSlice(56, ptr(String("a"))), makeSlice(56, new(String)), false},
 		{[]byte{}, nil, []any{}, true},
 		{[]byte{0xC0 + 56, 1}, nil, []any{}, true},
 		{[]byte{0xC0 + 1, 'a'}, nil, []any{new(String), new(String)}, true}, // list shorter than expected
+		{[]byte{0xC0 + 2, 'a', 'b'}, nil, []any{new(String)}, true},         // list longer than expected
 		{[]byte{0xC0}, nil, []any{new(String)}, true},                       // empty list, but an item is expected
 		{[]byte{0xC0 + 1, 'a'}, []any{&RLP{'a'}}, []any{nil}, false},        // nil item is replaced
 	}
@@ -593,6 +594,7 @@ func TestTypedListDecode(t *testing.T) {
 		{[]byte{}, nil, []*String{}, true},
 		{[]byte{0xC0 + 56, 1}, nil, []*String{}, true},
 		{[]byte{0xC0 + 1, 'a'}, nil, []*String{new(String), new(String)}, true},                                 // list shorter than expected
+		{[]byte{0xC0 + 2, 'a', 'b'}, nil, []*String{new(String)}, true},                                         // list longer than expected
 		{[]byte{0xC0}, nil, []*String{new(String)}, true},                                                       // empty list, but an item is expected
 		{[]byte{0xC0 + 2, 'a', 'b'}, []*String{ptr(String("a")), ptr(String("b"))}, []*String{nil, nil}, false}, // nil items are replaced
 	}

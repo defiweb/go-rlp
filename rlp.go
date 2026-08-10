@@ -144,17 +144,17 @@ func decodeBytes(src []byte, dst *[]byte) (int, error) {
 	return totalLen, nil
 }
 
-// encodeList encodes a slice into RLP list item.
+// encodeList encodes a slice into an RLP list item.
 func encodeList(src []any) ([]byte, error) {
 	return encodeTypedList(src)
 }
 
 // decodeList decodes RLP list item into a slice.
 func decodeList(src []byte, dst *[]any) (int, error) {
-	return decodeTypedList(src, dst, func() any { return new(RLP) })
+	return decodeTypedList(src, dst, func() any { return new(RLP) }, false)
 }
 
-// encodeTypedList encodes a slice into RLP list item.
+// encodeTypedList encodes a slice into the RLP list item.
 func encodeTypedList[T any](src []T) ([]byte, error) {
 	var buf bytes.Buffer
 	for _, item := range src {
@@ -179,13 +179,11 @@ func encodeTypedList[T any](src []T) ([]byte, error) {
 	return append(prefix, buf.Bytes()...), nil
 }
 
-// decodeTypedList decodes RLP list item into a slice.
-//
-// Items already present in the destination slice are reused, any additional
-// item found in the data is created using the newItem function and appended to
-// the slice. If the data contains fewer items than the destination slice,
-// ErrUnexpectedNumberOfItems is returned.
-func decodeTypedList[T any](src []byte, dst *[]T, newItem func() T) (int, error) {
+// decodeTypedList decodes items of RLP list item into a slice. Items already
+// present in the slice are decoded into, and, if grow is true, items found
+// after them are appended to the slice. Otherwise, the number of items in the
+// data must match the length of the slice.
+func decodeTypedList[T any](src []byte, dst *[]T, newItem func() T, grow bool) (int, error) {
 	offset, dataLen, prefixLen, err := decodePrefix(src)
 	if err != nil {
 		return 0, err
@@ -197,14 +195,19 @@ func decodeTypedList[T any](src []byte, dst *[]T, newItem func() T) (int, error)
 	if len(src) < totalLen {
 		return 0, ErrUnexpectedEndOfData
 	}
+	expected := len(*dst)
 	data := src[prefixLen:totalLen]
 	n := 0
 	for ; len(data) > 0; n++ {
+		if !grow && n >= expected {
+			// The data contains more items than expected.
+			return 0, ErrUnexpectedNumberOfItems
+		}
 		// Reuse the item already in the destination slice, if any.
 		// Otherwise, create a new one. Nil items are replaced with new ones to
 		// avoid dereferencing a nil pointer during decoding.
 		var item T
-		reuse := n < len(*dst) && !isNil((*dst)[n])
+		reuse := n < expected && !isNil((*dst)[n])
 		if reuse {
 			item = (*dst)[n]
 		} else {
@@ -226,14 +229,15 @@ func decodeTypedList[T any](src []byte, dst *[]T, newItem func() T) (int, error)
 		switch {
 		case reuse:
 			// The item is already in the destination slice.
-		case n < len(*dst):
+		case n < expected:
+			// The item in the destination slice is nil.
 			(*dst)[n] = item
 		default:
 			*dst = append(*dst, item)
 		}
 		data = data[itemLen:]
 	}
-	if n < len(*dst) {
+	if !grow && n < expected {
 		// The data contains fewer items than expected.
 		return 0, ErrUnexpectedNumberOfItems
 	}
